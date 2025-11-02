@@ -105,7 +105,7 @@ const AdminDashboard = () => {
         role,
         worker_id: localStorage.getItem("worker_id"),
       });
-      const res = await fetch(`http://localhost:3000/report?${query.toString()}`);
+      const res = await fetch(`https://attendance-tracking-backend-iota.vercel.app/report?${query.toString()}`);
       if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
       const data = await res.json();
       setFullData(data);

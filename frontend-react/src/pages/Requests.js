@@ -30,7 +30,7 @@ const Requests = () => {
         return;
       }
 
-      const res = await fetch(`http://localhost:3000/leave-requests?role=admin`);
+      const res = await fetch(`https://attendance-tracking-backend-iota.vercel.app/leave-requests?role=admin`);
       if (!res.ok) throw new Error("Failed to load leave requests");
       const data = await res.json();
       setRequests(data);
@@ -42,7 +42,7 @@ const Requests = () => {
 
   const updateRequest = async (id, status) => {
     try {
-      const res = await fetch(`http://localhost:3000/leave-requests/${id}?role=admin`, {
+      const res = await fetch(`https://attendance-tracking-backend-iota.vercel.app/leave-requests/${id}?role=admin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),

@@ -19,7 +19,7 @@ const UserManagement = () => {
 
   const loadUsers = async () => {
     try {
-      const res = await fetch("http://localhost:3000/users");
+      const res = await fetch("https://attendance-tracking-backend-iota.vercel.app/users");
       const data = await res.json();
       setUsers(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -35,7 +35,7 @@ const UserManagement = () => {
     }
 
     try {
-      const res = await fetch("http://localhost:3000/users?role=admin", {
+      const res = await fetch("https://attendance-tracking-backend-iota.vercel.app/users?role=admin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ worker_id: workerId, password, role, job, email }),
@@ -60,7 +60,7 @@ const UserManagement = () => {
     if (!window.confirm(`Are you sure you want to delete ${worker_id}?`)) return;
 
     try {
-      const res = await fetch(`http://localhost:3000/users/${worker_id}?role=admin`, {
+      const res = await fetch(`https://attendance-tracking-backend-iota.vercel.app/users/${worker_id}?role=admin`, {
         method: "DELETE",
       });
       const data = await res.json();
