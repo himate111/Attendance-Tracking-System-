@@ -1,0 +1,66 @@
+.myattendance-container {
+  padding: 20px;
+}
+
+.attendance-table-wrapper {
+  transition: filter 0.3s;
+}
+
+.attendance-table-wrapper.blurred {
+  filter: blur(5px);
+}
+
+/* Buttons below the table */
+.attendance-buttons {
+  margin-top: 20px;
+}
+
+/* Modal overlay centered */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5); /* dark overlay */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+/* Modal content box */
+.modal-content {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  width: 350px;
+  text-align: center;
+}
+
+.modal-content input,
+.modal-content textarea {
+  width: 100%;
+  margin: 5px 0;
+  padding: 5px;
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.modal-content button {
+  padding: 5px 10px;
+}
+
+/* Status-based row colors */
+.ontime-row {
+  background-color: rgb(66, 66, 2);
+}
+
+.late-row {
+  background-color: #c86d6d; /* red-ish */
+  color: rgb(122, 0, 0); /* optional for better readability */
+}
