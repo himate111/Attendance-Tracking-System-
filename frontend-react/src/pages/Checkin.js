@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../style/Checkin.css";
+import { FaUserClock, FaSignOutAlt, FaClipboardList, FaCalendarAlt } from "react-icons/fa";
 
 const Checkin = () => {
   const [statusMsg, setStatusMsg] = useState("");
@@ -10,7 +11,6 @@ const Checkin = () => {
   const [workerId, setWorkerId] = useState("");
   const navigate = useNavigate();
 
-  // Format time helper
   const formatTime = (dateStr) => {
     if (!dateStr) return "-";
     return new Date(dateStr).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
@@ -28,7 +28,7 @@ const Checkin = () => {
 
     setWorkerId(storedWorkerId);
 
-    const setButtonState = async () => {
+    const fetchAttendance = async () => {
       try {
         const res = await fetch(`http://localhost:3000/attendance/${storedWorkerId}`);
         const records = await res.json();
@@ -41,7 +41,7 @@ const Checkin = () => {
           setCheckInDisabled(true);
           setCheckOutDisabled(false);
           if (last.checkin_time) {
-            setStatusMsg(`Checked in at: ${formatTime(last.checkin_time)} (${last.status || "On time"})`);
+            setStatusMsg(`Checked in at ${formatTime(last.checkin_time)} (${last.status || "On time"})`);
           }
         } else {
           setCheckInDisabled(false);
@@ -54,7 +54,7 @@ const Checkin = () => {
       }
     };
 
-    setButtonState();
+    fetchAttendance();
   }, [navigate]);
 
   const handleCheckIn = async () => {
@@ -66,7 +66,7 @@ const Checkin = () => {
       });
       const data = await res.json();
       if (data.success) {
-        setStatusMsg(`Checked in at: ${formatTime(data.checkin_time)} (${data.status || "On time"})`);
+        setStatusMsg(`Checked in at ${formatTime(data.checkin_time)} (${data.status || "On time"})`);
         setCheckInDisabled(true);
         setCheckOutDisabled(false);
       } else {
@@ -87,7 +87,7 @@ const Checkin = () => {
       });
       const data = await res.json();
       if (data.success) {
-        setStatusMsg(`Checked out at: ${formatTime(data.checkout_time)}, Hours worked: ${data.hours_worked || 0}`);
+        setStatusMsg(`Checked out at ${formatTime(data.checkout_time)}, Hours worked: ${data.hours_worked || 0}`);
         setCheckOutDisabled(true);
         setCheckInDisabled(false);
       } else {
@@ -99,28 +99,61 @@ const Checkin = () => {
     }
   };
 
-  const handleViewAttendance = () => {
-    navigate("/myattendance"); // Create this page later
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("worker_id");
-    localStorage.removeItem("role");
-    localStorage.removeItem("job");
-    navigate("/login");
-  };
-
   return (
-    <div className="checkin-container">
-      <h2>Check-In Page</h2>
-      <p>Welcome, Worker {workerId}!</p>
-      <button onClick={handleCheckIn} disabled={checkInDisabled}>Check In</button>
-      <button onClick={handleCheckOut} disabled={checkOutDisabled}>Check Out</button>
-      <p>{statusMsg}</p>
-      <button onClick={handleViewAttendance}>View My Attendance</button>
-      <button onClick={handleLogout}>Logout</button>
+    <div className="dashboard-container">
+      {/* Sidebar */}
+      <aside className="sidebar">
+        <h2 className="sidebar-title">Worker Panel</h2>
+        <button onClick={() => navigate("/myattendance")} className="sidebar-btn">
+          <FaClipboardList /> View Attendance
+        </button>
+        <button onClick={() => navigate("/leave-request")} className="sidebar-btn">
+          <FaCalendarAlt /> Leave Request
+        </button>
+        <button
+          onClick={() => {
+            localStorage.clear();
+            navigate("/login");
+          }}
+          className="sidebar-btn logout-btn"
+        >
+          <FaSignOutAlt /> Logout
+        </button>
+      </aside>
+
+      {/* Main Section */}
+      <main className="main-content">
+        <div className="checkin-card">
+          <div className="card-header">
+            <FaUserClock className="icon" />
+            <h2>Welcome, Worker {workerId}</h2>
+          </div>
+
+          <div className="status-section">
+            <p className="status-text">{statusMsg || "No active session yet."}</p>
+          </div>
+
+          <div className="button-section">
+            <button
+              className={`action-btn checkin ${checkInDisabled ? "disabled" : ""}`}
+              onClick={handleCheckIn}
+              disabled={checkInDisabled}
+            >
+              Check In
+            </button>
+            <button
+              className={`action-btn checkout ${checkOutDisabled ? "disabled" : ""}`}
+              onClick={handleCheckOut}
+              disabled={checkOutDisabled}
+            >
+              Check Out
+            </button>
+          </div>
+        </div>
+      </main>
     </div>
   );
 };
 
 export default Checkin;
+

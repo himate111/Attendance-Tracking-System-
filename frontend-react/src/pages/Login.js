@@ -1,7 +1,7 @@
-// src/pages/Login.js
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../style/style.css";
+import workerIllustration from "../assets/worker.png"; // ✅ your saved image
 
 const Login = () => {
   const [workerId, setWorkerId] = useState("");
@@ -23,17 +23,12 @@ const Login = () => {
       const data = await res.json();
 
       if (data.success) {
-        // Save user info and role
         localStorage.setItem("user", JSON.stringify(data));
         localStorage.setItem("role", data.role);
         localStorage.setItem("worker_id", data.worker_id);
 
-        // Redirect based on role
-        if (data.role === "admin") {
-          navigate("/admin");
-        } else {
-          navigate("/checkin"); // you'll create WorkerDashboard later
-        }
+        if (data.role === "admin") navigate("/admin");
+        else navigate("/checkin");
       } else {
         setMessage(data.error || "Login failed");
       }
@@ -44,26 +39,53 @@ const Login = () => {
   };
 
   return (
-    <div className="login-container">
-      <h2>Login</h2>
-      <form onSubmit={handleLogin}>
-        <label>Worker ID</label>
-        <input
-          type="text"
-          value={workerId}
-          onChange={(e) => setWorkerId(e.target.value)}
-          required
-        />
-        <label>Password</label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <button type="submit">Login</button>
-      </form>
-      {message && <p style={{ marginTop: "15px", color: "red" }}>{message}</p>}
+    <div className="login-page">
+      {/* Left section with illustration */}
+      <div className="login-left">
+        <img src={workerIllustration} alt="Worker illustration" />
+      </div>
+
+      {/* Right section with form */}
+      <div className="login-right">
+        <div className="login-box">
+          <h2>Login</h2>
+
+          <form onSubmit={handleLogin}>
+            <div className="input-group">
+              <input
+                type="text"
+                placeholder="Worker ID"
+                value={workerId}
+                onChange={(e) => setWorkerId(e.target.value)}
+                required
+              />
+              <span className="icon">👤</span>
+            </div>
+
+            <div className="input-group">
+              <input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              <span className="icon">🔒</span>
+            </div>
+
+            <div className="forgot-password">
+              <a href="#">Forgot Password?</a>
+            </div>
+
+            <button type="submit" className="login-btn">
+              Login
+            </button>
+          </form>
+
+          {message && <p className="error-msg">{message}</p>}
+
+        </div>
+      </div>
     </div>
   );
 };
