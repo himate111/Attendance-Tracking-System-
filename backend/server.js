@@ -18,7 +18,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors({
   origin: [
     "http://localhost:3000", 
-    "https://attendance-tracking-backend-iota.vercel.app/"
+    "https://attendance-tracking-system-nu.vercel.app/"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   credentials: true
