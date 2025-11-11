@@ -1,7 +1,7 @@
 // ---------------- LOAD ENV ----------------
 require('dotenv').config(); // Load .env variables
 
-const mysql = require("mysql2/promise");\
+const mysql = require("mysql2/promise");
 
 console.log("DB Config (sanitized):", {
   host: process.env.DB_HOST,
