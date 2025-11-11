@@ -3,7 +3,6 @@ require('dotenv').config(); // Load .env variables
 
 const mysql = require("mysql2/promise");
 
-// ✅ Create a connection pool (works with Vercel serverless)
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
