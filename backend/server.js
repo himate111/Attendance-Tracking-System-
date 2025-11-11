@@ -15,7 +15,14 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ---------------- MIDDLEWARE ----------------
-app.use(cors());
+app.use(cors({
+  origin: [
+    "http://localhost:3000", 
+    "https://attendance-tracking-backend-iota.vercel.app/"
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  credentials: true
+}));
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, "../frontendd")));
 
