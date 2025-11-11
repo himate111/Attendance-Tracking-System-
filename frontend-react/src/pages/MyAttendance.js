@@ -39,7 +39,7 @@ const MyAttendance = () => {
 
     const fetchData = async () => {
       try {
-        const res = await fetch(`https://attendance-tracking-backend-iota.vercel.app/attendance/${workerId}`);
+        const res = await fetch(`https://attendance-tracking-system-nu.vercel.app/attendance/${workerId}`);
         if (!res.ok) throw new Error("Failed to fetch");
         const data = await res.json();
         setAttendance(data);
@@ -59,7 +59,7 @@ const MyAttendance = () => {
     }
 
     try {
-      const res = await fetch("https://attendance-tracking-backend-iota.vercel.app/leave-request", {
+      const res = await fetch("https://attendance-tracking-system-nu.vercel.app/leave-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ worker_id: workerId, from_date: fromDate, to_date: toDate, reason }),

@@ -14,7 +14,7 @@ const Login = () => {
     setMessage("");
 
     try {
-      const res = await fetch("https://attendance-tracking-backend-iota.vercel.app/login", {
+      const res = await fetch("https://attendance-tracking-system-nu.vercel.app/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ worker_id: workerId, password }),

@@ -17,7 +17,7 @@ const Payroll = () => {
   useEffect(() => {
     const loadWorkers = async () => {
       try {
-        const res = await fetch("https://attendance-tracking-backend-iota.vercel.app/users");
+        const res = await fetch("https://attendance-tracking-system-nu.vercel.app/users");
         const data = await res.json();
         setWorkers(data);
         if (data.length > 0) {
@@ -37,7 +37,7 @@ const Payroll = () => {
 
     try {
       const res = await fetch(
-        `https://attendance-tracking-backend-iota.vercel.app/salary-summary?worker_id=${workerId}`
+        `https://attendance-tracking-system-nu.vercel.app/salary-summary?worker_id=${workerId}`
       );
       const result = await res.json();
       const data = result.data;
@@ -54,7 +54,7 @@ const Payroll = () => {
 
       // --- Chart data ---
       const attRes = await fetch(
-        `https://attendance-tracking-backend-iota.vercel.app/attendance/${workerId}`
+        `https://attendance-tracking-system-nu.vercel.app/attendance/${workerId}`
       );
       const attData = await attRes.json();
 

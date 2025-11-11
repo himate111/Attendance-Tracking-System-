@@ -30,7 +30,7 @@ const Checkin = () => {
 
     const setButtonState = async () => {
       try {
-        const res = await fetch(`https://attendance-tracking-backend-iota.vercel.app/attendance/${storedWorkerId}`);
+        const res = await fetch(`https://attendance-tracking-system-nu.vercel.app/${storedWorkerId}`);
         const records = await res.json();
 
         const last = records
@@ -59,7 +59,7 @@ const Checkin = () => {
 
   const handleCheckIn = async () => {
     try {
-      const res = await fetch("https://attendance-tracking-backend-iota.vercel.app/checkin", {
+      const res = await fetch("https://attendance-tracking-system-nu.vercel.app/checkin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ worker_id: workerId, role: "worker" }),
@@ -80,7 +80,7 @@ const Checkin = () => {
 
   const handleCheckOut = async () => {
     try {
-      const res = await fetch("https://attendance-tracking-backend-iota.vercel.app/checkout", {
+      const res = await fetch("https://attendance-tracking-system-nu.vercel.app/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ worker_id: workerId, role: "worker" }),

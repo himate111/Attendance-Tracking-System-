@@ -11,7 +11,7 @@ const Analytics = () => {
 
   // 🔹 Fetch analytics data from backend
   useEffect(() => {
-    fetch("https://attendance-tracking-backend-iota.vercel.app/analytics")
+    fetch("https://attendance-tracking-system-nu.vercel.app/analytics")
       .then((res) => res.json())
       .then((data) => setAnalyticsData(data))
       .catch((err) => console.error("Error loading analytics:", err));
