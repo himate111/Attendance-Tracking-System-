@@ -1,26 +1,21 @@
 // ---------------- LOAD ENV ----------------
 require('dotenv').config(); // Load .env variables
 
-const mysql = require("mysql2");
+const mysql = require("mysql2/promise");
 
-// Use credentials from .env
-const db = mysql.createConnection({
-  host: process.env.DB_HOST,       // e.g., localhost
-  user: process.env.DB_USER,       // e.g., root
-  password: process.env.DB_PASS,   // e.g., Siva@mysql10#
-  database: process.env.DB_NAME,   // e.g., attendance_db
+// ✅ Create a connection pool (works with Vercel serverless)
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
   port: process.env.DB_PORT || 3306,
   ssl: {
     rejectUnauthorized: true
-  }
+  },
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
 
-db.connect((err) => {
-  if (err) {
-    console.error("DB connection error:", err.message);
-    return;
-  }
-  console.log("Connected to MySQL database");
-});
-
-module.exports = db;
+module.exports = pool;
