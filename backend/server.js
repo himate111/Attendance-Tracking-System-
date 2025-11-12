@@ -88,25 +88,36 @@ app.get("/requests", (req, res) => {
 app.post("/login", (req, res) => {
   const { worker_id, password } = req.body;
   console.log("Login request:", req.body);
-  const sql = "SELECT * FROM users WHERE worker_id = ? AND password = ?";
-  db.query(sql, [worker_id, password], (err, results) => {
+  try{
+    const [results] = await db.query(
+      "SELECT * FROM users WHERE worker_id = ? AND password = ?",
+      [worker_id, password]
+    );
+    console.log("DB query results:", results);
+    // const sql = "SELECT * FROM users WHERE worker_id = ? AND password = ?";
+    // db.query(sql, [worker_id, password], (err, results) => {
+    //   console.error("Login query error:", err);
+    //   if (err) return res.status(500).json({ error: err.message, success: false });
+      if (results.length === 0){
+        console.warn("Invalid credentials for", worker_id);
+        return res.status(401).json({ error: "Invalid credentials", success: false });
+      }
+  
+      const user = results[0];
+      res.json({
+        worker_id: user.worker_id,
+        role: user.role,
+        job: user.job,
+        email: user.email,
+        success: true,
+      });
+  } catch (err) {
     console.error("Login query error:", err);
-    if (err) return res.status(500).json({ error: err.message, success: false });
-    if (results.length === 0){
-      console.warn("Invalid credentials for", worker_id);
-      return res.status(401).json({ error: "Invalid credentials", success: false });
-    }
-
-    const user = results[0];
-    res.json({
-      worker_id: user.worker_id,
-      role: user.role,
-      job: user.job,
-      email: user.email,
-      success: true,
-    });
-  });
+    return res.status(500).json({ error: err.message, success: false });
+  }
 });
+//   });
+// });
 
 
 app.post("/checkin", (req, res) => {
