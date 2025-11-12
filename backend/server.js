@@ -85,7 +85,7 @@ app.get("/requests", (req, res) => {
 
 
 // ---------------- LOGIN ----------------
-app.post("/login", (req, res) => {
+app.post("/login", async(req, res) => {
   const { worker_id, password } = req.body;
   console.log("Login request:", req.body);
   try{
