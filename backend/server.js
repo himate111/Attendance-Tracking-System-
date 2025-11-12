@@ -18,7 +18,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors({
   origin: [
     "http://localhost:3000", 
-    "https://attendance-tracking-system-nu.vercel.app/"
+    "https://attendance-tracking-system-nu.vercel.app"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   credentials: true
@@ -87,11 +87,15 @@ app.get("/requests", (req, res) => {
 // ---------------- LOGIN ----------------
 app.post("/login", (req, res) => {
   const { worker_id, password } = req.body;
+  console.log("Login request:", req.body);
   const sql = "SELECT * FROM users WHERE worker_id = ? AND password = ?";
   db.query(sql, [worker_id, password], (err, results) => {
+    console.error("Login query error:", err);
     if (err) return res.status(500).json({ error: err.message, success: false });
-    if (results.length === 0)
+    if (results.length === 0){
+      console.warn("Invalid credentials for", worker_id);
       return res.status(401).json({ error: "Invalid credentials", success: false });
+    }
 
     const user = results[0];
     res.json({
