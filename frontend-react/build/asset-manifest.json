@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/Attendance-Tracking-System-/static/css/main.296a38a7.css",
+    "main.js": "/Attendance-Tracking-System-/static/js/main.a4a264e6.js",
+    "index.html": "/Attendance-Tracking-System-/index.html",
+    "main.296a38a7.css.map": "/Attendance-Tracking-System-/static/css/main.296a38a7.css.map",
+    "main.a4a264e6.js.map": "/Attendance-Tracking-System-/static/js/main.a4a264e6.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.296a38a7.css",
+    "static/js/main.a4a264e6.js"
+  ]
+}
