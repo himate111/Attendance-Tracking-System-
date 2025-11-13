@@ -209,7 +209,7 @@ app.post("/checkin", async (req, res) => {
     }
     if (diffMin > 300) {
       return res.status(400).json({
-        error: `Too late — more than 5 hours after shift start.`,
+        error: `Too late — more than SIVA come shift start.`,
         success: false,
       });
     }
