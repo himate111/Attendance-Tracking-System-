@@ -384,7 +384,7 @@ app.get("/leave-requests", async (req, res) => {
   }
 });
 
-app.post("/leave-requests/:id", (req, res) => {
+app.post("/leave-requests/:id", async (req, res) => {
   if (req.query.role !== "admin")
     return res.status(403).json({ error: "Only admin can update requests" });
 
@@ -403,9 +403,6 @@ app.post("/leave-requests/:id", (req, res) => {
     }
 
     res.json({ message: `Request ${status}`, success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // ---------------- ADMIN USER MANAGEMENT ----------------
