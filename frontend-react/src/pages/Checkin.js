@@ -5,17 +5,33 @@ import "../style/Checkin.css";
 
 const Checkin = () => {
   const [statusMsg, setStatusMsg] = useState("");
-  const [checkInDisabled, setCheckInDisabled] = useState(false);
-  const [checkOutDisabled, setCheckOutDisabled] = useState(true);
+  const [hasCheckedIn, setHasCheckedIn] = useState(false);
   const [workerId, setWorkerId] = useState("");
   const navigate = useNavigate();
 
-  // Format time helper
+  // Helper to show readable IST time
   const formatTime = (dateStr) => {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+    const parsed = new Date(dateStr);
+
+    if (isNaN(parsed)) {
+      const fixed = new Date(dateStr.replace(" ", "T") + "Z");
+      if (isNaN(fixed)) return "-";
+      return fixed.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+    }
+
+    return parsed.toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
   };
 
+  // Load worker status on page load
   useEffect(() => {
     const storedWorkerId = localStorage.getItem("worker_id");
     const role = localStorage.getItem("role");
@@ -28,25 +44,41 @@ const Checkin = () => {
 
     setWorkerId(storedWorkerId);
 
-    const setButtonState = async () => {
+    const fetchStatus = async () => {
       try {
-        const res = await fetch(`https://attendance-tracking-system-nu.vercel.app/${storedWorkerId}`);
+        const res = await fetch(
+          `https://attendance-tracking-system-nu.vercel.app/attendance/${storedWorkerId}`
+        );
+
         const records = await res.json();
 
-        const last = records
-          .sort((a, b) => new Date(b.work_date) - new Date(a.work_date))
-          .find(r => !r.checkout_time);
+        if (!Array.isArray(records) || records.length === 0) {
+          setHasCheckedIn(false);
+          setStatusMsg("You have not checked in today.");
+          return;
+        }
 
-        if (last) {
-          setCheckInDisabled(true);
-          setCheckOutDisabled(false);
-          if (last.checkin_time) {
-            setStatusMsg(`Checked in at: ${formatTime(last.checkin_time)} (${last.status || "On time"})`);
-          }
+        // 1️⃣ Check ACTIVE session (checkout_time is NULL)
+        const active = records.find((r) => !r.checkout_time);
+
+        if (active) {
+          setHasCheckedIn(true);
+          setStatusMsg(
+            `Checked in at: ${formatTime(active.checkin_time)} (${active.status || "On time"})`
+          );
+          return;
+        }
+
+        // 2️⃣ Check if they already checked in today
+        const today = new Date().toISOString().split("T")[0];
+        const todayRecord = records.find((r) => r.work_date === today);
+
+        if (todayRecord) {
+          setHasCheckedIn(false);
+          setStatusMsg("You already checked in today and checked out.");
         } else {
-          setCheckInDisabled(false);
-          setCheckOutDisabled(true);
-          setStatusMsg("");
+          setHasCheckedIn(false);
+          setStatusMsg("You have not checked in today.");
         }
       } catch (err) {
         console.error(err);
@@ -54,21 +86,28 @@ const Checkin = () => {
       }
     };
 
-    setButtonState();
+    fetchStatus();
   }, [navigate]);
 
+  // Check-In
   const handleCheckIn = async () => {
     try {
-      const res = await fetch("https://attendance-tracking-system-nu.vercel.app/checkin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ worker_id: workerId, role: "worker" }),
-      });
+      const res = await fetch(
+        "https://attendance-tracking-system-nu.vercel.app/checkin",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ worker_id: workerId, role: "worker" }),
+        }
+      );
+
       const data = await res.json();
+
       if (data.success) {
-        setStatusMsg(`Checked in at: ${formatTime(data.checkin_time)} (${data.status || "On time"})`);
-        setCheckInDisabled(true);
-        setCheckOutDisabled(false);
+        setHasCheckedIn(true);
+        setStatusMsg(
+          `Checked in at: ${formatTime(data.checkin_time)} (${data.status || "On time"})`
+        );
       } else {
         setStatusMsg(data.error || "Check-in failed.");
       }
@@ -78,18 +117,27 @@ const Checkin = () => {
     }
   };
 
+  // Check-Out
   const handleCheckOut = async () => {
     try {
-      const res = await fetch("https://attendance-tracking-system-nu.vercel.app/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ worker_id: workerId, role: "worker" }),
-      });
+      const res = await fetch(
+        "https://attendance-tracking-system-nu.vercel.app/checkout",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ worker_id: workerId, role: "worker" }),
+        }
+      );
+
       const data = await res.json();
+
       if (data.success) {
-        setStatusMsg(`Checked out at: ${formatTime(data.checkout_time)}, Hours worked: ${data.hours_worked || 0}`);
-        setCheckOutDisabled(true);
-        setCheckInDisabled(false);
+        setHasCheckedIn(false);
+        setStatusMsg(
+          `Checked out at: ${formatTime(data.checkout_time)}, Hours worked: ${
+            data.hours_worked || 0
+          }`
+        );
       } else {
         setStatusMsg(data.error || "Check-out failed.");
       }
@@ -99,9 +147,7 @@ const Checkin = () => {
     }
   };
 
-  const handleViewAttendance = () => {
-    navigate("/myattendance"); // Create this page later
-  };
+  const handleViewAttendance = () => navigate("/myattendance");
 
   const handleLogout = () => {
     localStorage.removeItem("worker_id");
@@ -114,9 +160,16 @@ const Checkin = () => {
     <div className="checkin-container">
       <h2>Check-In Page</h2>
       <p>Welcome, Worker {workerId}!</p>
-      <button onClick={handleCheckIn} disabled={checkInDisabled}>Check In</button>
-      <button onClick={handleCheckOut} disabled={checkOutDisabled}>Check Out</button>
-      <p>{statusMsg}</p>
+
+      {/* Buttons */}
+      {!hasCheckedIn ? (
+        <button onClick={handleCheckIn}>Check In</button>
+      ) : (
+        <button onClick={handleCheckOut}>Check Out</button>
+      )}
+
+      <p style={{ marginTop: "10px" }}>{statusMsg}</p>
+
       <button onClick={handleViewAttendance}>View My Attendance</button>
       <button onClick={handleLogout}>Logout</button>
     </div>
