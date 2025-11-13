@@ -89,17 +89,26 @@ app.get("/requests", (req, res) => {
 // ---------------- LOGIN ----------------
 app.post("/login", async (req, res) => {
   const { worker_id, password } = req.body;
+
+  console.log("🔐 Login request received:", req.body);
+
   try {
+    // Query the database for matching credentials
     const [results] = await db.query(
       "SELECT * FROM users WHERE worker_id = ? AND password = ?",
       [worker_id, password]
     );
 
+    console.log("📊 DB query results:", results);
+
     if (results.length === 0) {
+      console.warn("⚠️ Invalid credentials for:", worker_id);
       return res.status(401).json({ error: "Invalid credentials", success: false });
     }
 
     const user = results[0];
+
+    // Successful login response
     res.json({
       worker_id: user.worker_id,
       role: user.role,
@@ -107,21 +116,35 @@ app.post("/login", async (req, res) => {
       email: user.email,
       success: true,
     });
+
   } catch (err) {
-    console.error("Login error:", err);
+    console.error("❌ Login error:", err);
     res.status(500).json({ error: "Database error", success: false });
   }
 });
 
 
+// --------------- CHECK-IN (IMPROVED FOR NIGHT SHIFTS) ------------------
 app.post("/checkin", async (req, res) => {
   const { worker_id, role } = req.body;
+
   if (role !== "worker") {
     return res.status(403).json({ error: "Only workers can check in", success: false });
   }
 
   try {
-    // 1️⃣ Fetch user's shift
+    const nowIST = getNowIST();
+
+    // A. FIRST: if worker already has an ACTIVE check-in (no checkout_time), block duplicate.
+    const [activeRows] = await db.query(
+      `SELECT * FROM attendance WHERE worker_id = ? AND checkout_time IS NULL ORDER BY id DESC LIMIT 1`,
+      [worker_id]
+    );
+    if (activeRows && activeRows.length > 0) {
+      return res.status(400).json({ error: "Already checked in (active session)", success: false });
+    }
+
+    // B. Fetch user's shift
     const [shiftResults] = await db.query(
       `SELECT s.id AS shift_id, s.shift_name, s.start_time, s.end_time
        FROM users u
@@ -130,10 +153,7 @@ app.post("/checkin", async (req, res) => {
       [worker_id]
     );
 
-    console.log("🔍 Shift lookup for", worker_id, "=>", shiftResults);
-
     if (!shiftResults || shiftResults.length === 0) {
-      // Fetch what shift_id the user has
       const [userRows] = await db.query("SELECT shift_id FROM users WHERE worker_id = ?", [worker_id]);
       const userShift = userRows.length > 0 ? userRows[0].shift_id : "none";
       return res.status(404).json({
@@ -143,30 +163,43 @@ app.post("/checkin", async (req, res) => {
     }
 
     const shift = shiftResults[0];
-    const nowIST = getNowIST();
     const [shStartH, shStartM, shStartS] = shift.start_time.split(":").map(Number);
     const [shEndH, shEndM, shEndS] = shift.end_time.split(":").map(Number);
 
-    // 2️⃣ Create shift time objects
-    let shiftStart = new Date();
-    shiftStart.setHours(shStartH, shStartM, shStartS, 0);
+    // C. Build shiftStart relative to nowIST (important for night/overnight shifts)
+    let shiftStart = new Date(nowIST);
+    shiftStart.setHours(shStartH, shStartM || 0, shStartS || 0, 0);
+
+    // Build shiftEnd from shiftStart
     let shiftEnd = new Date(shiftStart);
-    shiftEnd.setHours(shEndH, shEndM, shEndS, 0);
+    shiftEnd.setHours(shEndH, shEndM || 0, shEndS || 0, 0);
 
-    // Handle night shifts
-    if (shEndH < shStartH) shiftEnd.setDate(shiftEnd.getDate() + 1);
+    // Handle overnight shift (end time is next day)
+    if (shEndH < shStartH || (shEndH === shStartH && shEndM <= shStartM)) {
+      shiftEnd.setDate(shiftEnd.getDate() + 1);
+    }
 
+    // Additional adjustment:
+    // Example: shift 22:00 -> 06:00, now is 01:00. shiftStart must be yesterday 22:00.
+    if (shEndH < shStartH && nowIST < shiftStart) {
+      shiftStart.setDate(shiftStart.getDate() - 1);
+      shiftEnd.setDate(shiftEnd.getDate() - 1);
+      shiftEnd.setDate(shiftEnd.getDate() + 1);
+    }
+
+    // Now compute workDate from shiftStart (correct for overnight shifts)
     const workDate = getISTDateString(shiftStart);
 
-    // 3️⃣ Check duplicate check-in
+    // D. Secondary duplicate prevention (by work_date)
     const [existing] = await db.query(
       "SELECT * FROM attendance WHERE worker_id=? AND work_date=?",
       [worker_id, workDate]
     );
     if (existing.length > 0) {
-      return res.status(400).json({ error: "Already checked in today", success: false });
+      return res.status(400).json({ error: "Already checked in today (by work_date)", success: false });
     }
 
+    // E. Time window checks relative to shiftStart
     const diffMin = (nowIST - shiftStart) / 60000;
     if (diffMin < -60) {
       return res.status(400).json({
@@ -182,19 +215,27 @@ app.post("/checkin", async (req, res) => {
     }
 
     let status = diffMin > 15 ? "Late" : "On time";
+    const checkinTime = formatDateTimeForMySQL(nowIST);
 
+    // F. Insert check-in record
     await db.query(
       `INSERT INTO attendance (worker_id, checkin_time, work_date, shift_id, status)
        VALUES (?, ?, ?, ?, ?)`,
-      [worker_id, formatDateTimeForMySQL(nowIST), workDate, shift.shift_id, status]
+      [worker_id, checkinTime, workDate, shift.shift_id, status]
     );
 
-    res.json({
+    return res.json({
       message: `Check-in successful (${shift.shift_name})`,
       success: true,
       status,
       work_date: workDate,
+      checkin_time: nowIST.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }),
     });
+
   } catch (err) {
     console.error("❌ Check-in error:", err);
     res.status(500).json({ error: err.message, success: false });
@@ -202,44 +243,70 @@ app.post("/checkin", async (req, res) => {
 });
 
 
+
 // ---------------- CHECK-OUT (Shift-Based, Fixed for Night Shifts) ----------------
 app.post("/checkout", async (req, res) => {
   const { worker_id, role } = req.body;
-  if (role !== "worker") return res.status(403).json({ error: "Only workers can check out", success: false });
+
+  if (role !== "worker") {
+    return res.status(403).json({ error: "Only workers can check out", success: false });
+  }
 
   try {
     const nowIST = getNowIST();
+
+    // Fetch latest check-in record for the worker
     const [rows] = await db.query(`
       SELECT a.*, s.start_time, s.end_time
       FROM attendance a
       JOIN shifts s ON a.shift_id = s.id
-      WHERE a.worker_id=? AND a.checkout_time IS NULL
-      ORDER BY a.id DESC LIMIT 1
+      WHERE a.worker_id = ? AND a.checkout_time IS NULL
+      ORDER BY a.id DESC
+      LIMIT 1
     `, [worker_id]);
 
-    if (rows.length === 0) return res.status(400).json({ error: "No active check-in found", success: false });
+    if (rows.length === 0) {
+      return res.status(400).json({ error: "No active check-in found", success: false });
+    }
 
     const attendance = rows[0];
     const checkinTime = new Date(attendance.checkin_time);
     const [shStartH, shStartM] = attendance.start_time.split(":").map(Number);
     const [shEndH, shEndM] = attendance.end_time.split(":").map(Number);
 
+    // Calculate shift end time
     let shiftEnd = new Date(checkinTime);
     shiftEnd.setHours(shEndH, shEndM, 0, 0);
-    if (shEndH < shStartH) shiftEnd.setDate(shiftEnd.getDate() + 1);
 
+    // Handle night shifts (end time wraps to next day)
+    if (shEndH < shStartH || (shEndH === shStartH && shEndM <= shStartM)) {
+      shiftEnd.setDate(shiftEnd.getDate() + 1);
+    }
+
+    // Calculate hours worked
     const hoursWorked = parseFloat(((nowIST - checkinTime) / 3600000).toFixed(2));
     let overtime = 0;
     let status = attendance.status;
 
-    if (nowIST > shiftEnd) overtime = parseFloat(((nowIST - shiftEnd) / 3600000).toFixed(2));
-    else if (nowIST < shiftEnd) status = "Left early";
+    // Determine overtime or early leave
+    if (nowIST > shiftEnd) {
+      overtime = parseFloat(((nowIST - shiftEnd) / 3600000).toFixed(2));
+    } else if (nowIST < shiftEnd) {
+      status = "Left early";
+    }
 
+    // Update attendance record
     await db.query(`
       UPDATE attendance
-      SET checkout_time=?, hours_worked=?, overtime_hours=?, status=?
-      WHERE id=?
-    `, [formatDateTimeForMySQL(nowIST), hoursWorked, overtime, status, attendance.id]);
+      SET checkout_time = ?, hours_worked = ?, overtime_hours = ?, status = ?
+      WHERE id = ?
+    `, [
+      formatDateTimeForMySQL(nowIST),
+      hoursWorked,
+      overtime,
+      status,
+      attendance.id,
+    ]);
 
     res.json({
       message: "Check-out successful",
@@ -247,12 +314,24 @@ app.post("/checkout", async (req, res) => {
       hours_worked: hoursWorked,
       overtime_hours: overtime,
       status,
+      checkin_time: new Date(attendance.checkin_time).toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }),
+      checkout_time: nowIST.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }),
     });
+
   } catch (err) {
     console.error("❌ Checkout error:", err);
     res.status(500).json({ error: err.message, success: false });
   }
 });
+
 
 
 // ---------------- LEAVE REQUESTS ----------------
@@ -298,6 +377,8 @@ app.get("/leave-requests", (req, res) => {
 app.post("/leave-requests/:id", (req, res) => {
   if (req.query.role !== "admin")
     return res.status(403).json({ error: "Only admin can update requests" });
+
+  
   const { status } = req.body;
   if (!["Approved", "Rejected"].includes(status))
     return res.status(400).json({ error: "Invalid status" });
