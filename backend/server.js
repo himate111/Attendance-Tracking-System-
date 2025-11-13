@@ -123,7 +123,6 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// ---------------CHECK IN------------------
 
 // --------------- CHECK-IN (IMPROVED FOR NIGHT SHIFTS) ------------------
 app.post("/checkin", async (req, res) => {
@@ -210,7 +209,7 @@ app.post("/checkin", async (req, res) => {
     }
     if (diffMin > 300) {
       return res.status(400).json({
-        error: `Too late siva come soon.`,
+        error: `Too late — more than 5 hours after shift start.`,
         success: false,
       });
     }
@@ -336,21 +335,19 @@ app.post("/checkout", async (req, res) => {
 
 
 // ---------------- LEAVE REQUESTS ----------------
-// 1️⃣ Submit leave request
-app.post("/leave-request", async (req, res) => {
-  try {
-    const { worker_id, reason, from_date, to_date } = req.body;
-    if (!worker_id || !reason || !from_date || !to_date) {
-      return res.status(400).json({ message: "All fields are required", success: false });
-    }
+app.post("/leave-request", (req, res) => {
+  const { worker_id, reason, from_date, to_date } = req.body;
+  if (!worker_id || !reason || !from_date || !to_date) {
+    return res.status(400).json({ message: "All fields are required", success: false });
+  }
 
-    const sql = `
-      INSERT INTO leave_requests (worker_id, reason, from_date, to_date, status)
-      VALUES (?, ?, ?, ?, 'Pending')
-    `;
-    await db.query(sql, [worker_id, reason, from_date, to_date]);
+  const sql = `
+    INSERT INTO leave_requests (worker_id, reason, from_date, to_date, status)
+    VALUES (?, ?, ?, ?, 'Pending')
+  `;
+  db.query(sql, [worker_id, reason, from_date, to_date], (err) => {
+    if (err) return res.status(500).json({ message: "Database error", success: false });
 
-    // Send notification email (non-blocking)
     transporter.sendMail(
       {
         from: process.env.GMAIL_USER,
@@ -364,27 +361,20 @@ app.post("/leave-request", async (req, res) => {
     );
 
     res.json({ message: "Leave request submitted successfully ✅", success: true });
-  } catch (err) {
-    res.status(500).json({ message: "Database error", success: false });
-  }
+  });
 });
 
-// 2️⃣ Get all leave requests (admin only)
-app.get("/leave-requests", async (req, res) => {
-  try {
-    if (req.query.role !== "admin") {
-      return res.status(403).json({ error: "Only admin can view requests" });
-    }
-
-    const sql = "SELECT * FROM leave_requests ORDER BY id DESC";
-    const [results] = await db.query(sql);
+app.get("/leave-requests", (req, res) => {
+  if (req.query.role !== "admin")
+    return res.status(403).json({ error: "Only admin can view requests" });
+  const sql = "SELECT * FROM leave_requests ORDER BY id DESC";
+  db.query(sql, (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
     res.json(results);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  });
 });
 
-app.post("/leave-requests/:id", async (req, res) => {
+app.post("/leave-requests/:id", (req, res) => {
   if (req.query.role !== "admin")
     return res.status(403).json({ error: "Only admin can update requests" });
 
@@ -393,149 +383,118 @@ app.post("/leave-requests/:id", async (req, res) => {
   if (!["Approved", "Rejected"].includes(status))
     return res.status(400).json({ error: "Invalid status" });
 
-    const [result] = await db.query(
-      "UPDATE leave_requests SET status=? WHERE id=?",
-      [status, req.params.id]
-    );
+  db.query(
+    "UPDATE leave_requests SET status=? WHERE id=?",
+    [status, req.params.id],
+    (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (result.affectedRows === 0) return res.status(404).json({ error: "Request not found" });
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Request not found" });
+      res.json({ message: `Request ${status}`, success: true });
     }
-
-    res.json({ message: `Request ${status}`, success: true });
+  );
 });
 
 // ---------------- ADMIN USER MANAGEMENT ----------------
-// 1️⃣ Add a new user (admin only)
-app.post("/users", async (req, res) => {
-  try {
-    const { worker_id, password, role, job, email } = req.body;
-    if (!worker_id || !password || !role) {
-      return res.status(400).json({ error: "worker_id, password, role required" });
-    }
-    if (req.query.role !== "admin") {
-      return res.status(403).json({ error: "Only admin can add users" });
-    }
+app.post("/users", (req, res) => {
+  const { worker_id, password, role, job, email } = req.body;
+  if (!worker_id || !password || !role)
+    return res.status(400).json({ error: "worker_id, password, role required" });
+  if (req.query.role !== "admin")
+    return res.status(403).json({ error: "Only admin can add users" });
 
-    const sql = "INSERT INTO users (worker_id, password, role, job, email) VALUES (?, ?, ?, ?, ?)";
-    await db.query(sql, [worker_id, password, role, job || null, email || null]);
-
-    res.json({ message: "User added successfully", success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  db.query(
+    "INSERT INTO users (worker_id, password, role, job, email) VALUES (?, ?, ?, ?, ?)",
+    [worker_id, password, role, job || null, email || null],
+    (err) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ message: "User added successfully", success: true });
+    }
+  );
 });
 
-// 2️⃣ Delete a user (admin only)
-app.delete("/users/:id", async (req, res) => {
-  try {
-    if (req.query.role !== "admin") {
-      return res.status(403).json({ error: "Only admin can delete users" });
-    }
-
-    const sql = "DELETE FROM users WHERE worker_id=?";
-    const [result] = await db.query(sql, [req.params.id]);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
+app.delete("/users/:id", (req, res) => {
+  if (req.query.role !== "admin")
+    return res.status(403).json({ error: "Only admin can delete users" });
+  db.query("DELETE FROM users WHERE worker_id=?", [req.params.id], (err, result) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (result.affectedRows === 0) return res.status(404).json({ error: "User not found" });
     res.json({ message: "User removed successfully", success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  });
 });
 
-// 3️⃣ Fetch all workers (for payroll dropdown)
-app.get("/users", async (req, res) => {
-  try {
-    const sql = "SELECT worker_id, job FROM users WHERE role='worker'";
-    const [results] = await db.query(sql);
-    res.json(results);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+// Fetch all workers (for payroll dropdown)
+app.get("/users", (req, res) => {
+  const sql = "SELECT worker_id, job FROM users WHERE role='worker'";
+  db.query(sql, (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(results); // returns an array of workers
+  });
 });
+
 
 // ---------------- ATTENDANCE FETCH ----------------
-app.get("/attendance/:worker_id", async (req, res) => {
-  try {
-    const { worker_id } = req.params;
-    const sql = `
-      SELECT a.*, u.job, u.role
-      FROM attendance a
-      JOIN users u ON a.worker_id = u.worker_id
-      WHERE a.worker_id = ?
-      ORDER BY a.work_date DESC
-    `;
-    const [results] = await db.query(sql, [worker_id]);
+app.get("/attendance/:worker_id", (req, res) => {
+  const { worker_id } = req.params;
+  const sql = `
+    SELECT a.*, u.job, u.role
+    FROM attendance a
+    JOIN users u ON a.worker_id = u.worker_id
+    WHERE a.worker_id = ?
+    ORDER BY a.work_date DESC
+  `;
+  db.query(sql, [worker_id], (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
     res.json(results);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  });
 });
 
 // ---------------- REPORT ----------------
-app.get("/report", async (req, res) => {
-  try {
-    const { worker_id, role } = req.query;
+app.get("/report", (req, res) => { const { worker_id, role } = req.query; 
+let sql = "SELECT a.*, u.job, u.role FROM attendance a JOIN users u ON a.worker_id = u.worker_id"; 
+const params = []; if (role === "worker" && worker_id) { sql += " WHERE a.worker_id = ?"; 
+params.push(worker_id); } sql += " ORDER BY a.work_date DESC, a.checkin_time ASC"; 
+db.query(sql, params, (err, results) => { if (err) return res.status(500).json({ error: err.message }); 
+res.json(results); }); });
 
-    let sql = `
-      SELECT a.*, u.job, u.role
-      FROM attendance a
-      JOIN users u ON a.worker_id = u.worker_id
-    `;
-    const params = [];
-
-    if (role === "worker" && worker_id) {
-      sql += " WHERE a.worker_id = ?";
-      params.push(worker_id);
-    }
-
-    sql += " ORDER BY a.work_date DESC, a.checkin_time ASC";
-
-    const [results] = await db.query(sql, params);
-    res.json(results);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ---------------- SALARY SUMMARY ----------------
-app.get("/salary-summary", async (req, res) => {
-  try {
-    const { worker_id, month, year } = req.query;
+app.get("/salary-summary", (req, res) => {
+  const { worker_id, month, year } = req.query;
 
-    let sql = `
-      SELECT 
-        a.worker_id, 
-        u.job, 
-        COUNT(a.id) AS present_days,
-        SUM(IF(a.status='On time' OR a.status='Late', 1, 0)) AS worked_days,
-        SUM(IF(a.status='Late',1,0)) AS late_days,
-        SUM(IF(a.status='Left early',1,0)) AS early_leave_days,
-        SUM(a.hours_worked) AS total_hours,
-        SUM(a.overtime_hours) AS total_overtime
-      FROM attendance a
-      JOIN users u ON a.worker_id = u.worker_id
-      WHERE 1=1
-    `;
+  let sql = `
+    SELECT 
+      a.worker_id, 
+      u.job, 
+      COUNT(a.id) AS present_days,
+      SUM(IF(a.status='On time' OR a.status='Late', 1, 0)) AS worked_days,
+      SUM(IF(a.status='Late',1,0)) AS late_days,
+      SUM(IF(a.status='Left early',1,0)) AS early_leave_days,
+      SUM(a.hours_worked) AS total_hours,
+      SUM(a.overtime_hours) AS total_overtime
+    FROM attendance a
+    JOIN users u ON a.worker_id = u.worker_id
+    WHERE 1=1
+  `;
 
-    const params = [];
+  const params = [];
 
-    if (worker_id) {
-      sql += " AND a.worker_id = ?";
-      params.push(worker_id);
-    }
+  // ✅ Filter by worker_id if provided
+  if (worker_id) {
+    sql += " AND a.worker_id = ?";
+    params.push(worker_id);
+  }
 
-    if (month && year) {
-      sql += " AND MONTH(a.work_date) = ? AND YEAR(a.work_date) = ?";
-      params.push(month, year);
-    }
+  // ✅ Filter by month/year if given
+  if (month && year) {
+    sql += " AND MONTH(a.work_date) = ? AND YEAR(a.work_date) = ?";
+    params.push(month, year);
+  }
 
-    sql += " GROUP BY a.worker_id";
+  sql += " GROUP BY a.worker_id";
 
-    const [results] = await db.query(sql, params);
+  db.query(sql, params, (err, results) => {
+    if (err) return res.status(500).json({ success: false, error: err.message });
 
     const dailyWage = 300;
     const overtimeRate = 10;
@@ -565,39 +524,42 @@ app.get("/salary-summary", async (req, res) => {
     });
 
     res.json({ success: true, data: summary });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+  });
 });
+
+
 // ---------------- PAYROLL ANALYTICS ----------------
-app.get("/payroll", async (req, res) => {
-  try {
-    const workerId = req.query.worker_id;
-    const currentMonth = new Date().getMonth() + 1;
-    const currentYear = new Date().getFullYear();
+app.get("/payroll", (req, res) => {
+  const workerId = req.query.worker_id;
+  const currentMonth = new Date().getMonth() + 1;
+  const currentYear = new Date().getFullYear();
 
-    let sql = `
-      SELECT 
-        a.worker_id,
-        w.job,
-        COUNT(DISTINCT a.work_date) AS worked_days,
-        ROUND(SUM(a.hours_worked), 2) AS total_hours,
-        ROUND(SUM(a.overtime_hours), 2) AS total_overtime
-      FROM attendance a
-      INNER JOIN users w ON a.worker_id = w.worker_id
-      WHERE MONTH(a.work_date) = ? AND YEAR(a.work_date) = ?
-    `;
+  let sql = `
+    SELECT 
+      a.worker_id,
+      w.job,
+      COUNT(DISTINCT a.work_date) AS worked_days,
+      ROUND(SUM(a.hours_worked), 2) AS total_hours,
+      ROUND(SUM(a.overtime_hours), 2) AS total_overtime
+    FROM attendance a
+    INNER JOIN users w ON a.worker_id = w.worker_id
+    WHERE MONTH(a.work_date) = ? AND YEAR(a.work_date) = ?
+  `;
 
-    const params = [currentMonth, currentYear];
+  const params = [currentMonth, currentYear];
 
-    if (workerId) {
-      sql += " AND a.worker_id = ?";
-      params.push(workerId);
+  if (workerId) {
+    sql += " AND a.worker_id = ?";
+    params.push(workerId);
+  }
+
+  sql += " GROUP BY a.worker_id, w.job ORDER BY a.worker_id;";
+
+  db.query(sql, params, (err, rows) => {
+    if (err) {
+      console.error("❌ Error fetching payroll data:", err);
+      return res.status(500).json({ error: "Error fetching payroll data" });
     }
-
-    sql += " GROUP BY a.worker_id, w.job ORDER BY a.worker_id;";
-
-    const [rows] = await db.query(sql, params);
 
     if (!rows.length) {
       return res.json({ message: "No data found for this month", data: [] });
@@ -623,12 +585,9 @@ app.get("/payroll", async (req, res) => {
       year: currentYear,
       data: results
     });
-
-  } catch (err) {
-    console.error("❌ Error fetching payroll data:", err);
-    res.status(500).json({ error: "Error fetching payroll data" });
-  }
+  });
 });
+
 
 
 // ---------------- DAILY SHIFT REMINDERS ----------------
@@ -636,55 +595,62 @@ const sendShiftReminder = (shiftName, hour, minute) => {
   const cronTime = `${minute} ${hour} * * *`; // minute hour every day
   cron.schedule(
     cronTime,
-    async () => {
-      try {
-        console.log(`⏰ Running ${shiftName} reminder at ${hour}:${minute} IST`);
-        const today = getISTDateString();
+    () => {
+      console.log(`⏰ Running ${shiftName} reminder at ${hour}:${minute} IST`);
+      const today = getISTDateString();
 
-        const sql = `
-          SELECT u.worker_id, u.job, u.email
-          FROM users u
-          JOIN shifts s ON u.shift_id = s.id
-          WHERE u.role='worker' AND s.shift_name = ?
-            AND u.worker_id NOT IN (
-              SELECT worker_id FROM attendance WHERE work_date = ?
-            )
-        `;
+      const sql = `
+        SELECT u.worker_id, u.job, u.email
+        FROM users u
+        JOIN shifts s ON u.shift_id = s.id
+        WHERE u.role='worker' AND s.shift_name = ?
+          AND u.worker_id NOT IN (
+            SELECT worker_id FROM attendance WHERE work_date = ?
+          )
+      `;
 
-        const [workers] = await db.query(sql, [shiftName, today]);
+      db.query(sql, [shiftName, today], (err, workers) => {
+        if (err) return console.error("Error fetching absent workers:", err.message);
+        if (!workers.length) return console.log(`✅ All ${shiftName} workers checked in today.`);
 
-        if (!workers.length) {
-          return console.log(`✅ All ${shiftName} workers checked in today.`);
-        }
-
-        for (const worker of workers) {
+        workers.forEach((worker) => {
           if (worker.email) {
-            try {
-              await transporter.sendMail({
+            transporter.sendMail(
+              {
                 from: process.env.GMAIL_USER,
                 to: worker.email,
                 subject: `Reminder: Please Check-In (${shiftName})`,
                 text: `Hello ${worker.worker_id}, you haven’t checked in yet for ${shiftName} today (${today}). Please check in.`,
-              });
-              console.log(`📩 Reminder sent to ${worker.worker_id} (${shiftName})`);
-            } catch (err) {
-              console.error("Email error:", err.message);
-            }
+              },
+              (err) => {
+                if (err) console.error("Email error:", err.message);
+                else console.log(`📩 Reminder sent to ${worker.worker_id} (${shiftName})`);
+              }
+            );
           }
-        }
-      } catch (err) {
-        console.error("Error fetching absent workers:", err.message);
-      }
+        });
+      });
     },
     { timezone: "Asia/Kolkata" }
   );
 };
-// Schedule reminders for shifts
-sendShiftReminder("Shift 1", 9, 30);  // 9:30 AM
-sendShiftReminder("Shift 2", 22, 0);  // 10:00 PM
-app.get("/analytics", async (req, res) => {
-  try {
-    const [rows] = await db.promise().query("SELECT * FROM attendance ORDER BY work_date ASC");
+
+// ---------------- SCHEDULE REMINDERS ----------------
+// Shift 1 → 9:30 AM
+sendShiftReminder("Shift 1", 9, 30);
+
+// Shift 2 → 10:00 PM
+sendShiftReminder("Shift 2", 22, 0);
+
+
+app.get("/analytics", (req, res) => {
+  const sql = "SELECT * FROM attendance ORDER BY work_date ASC";
+
+  db.query(sql, (err, rows) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Failed to load analytics" });
+    }
 
     let totalHours = 0;
     let totalLate = 0;
@@ -702,15 +668,20 @@ app.get("/analytics", async (req, res) => {
       if (row.status && row.status.toLowerCase() === "late") totalLate++;
       totalCheckins++;
 
-      // Normalize MySQL DATE/DATETIME
+      // ✅ Normalize MySQL DATETIME or DATE properly
       let dateLabel = "-";
       if (row.work_date) {
-        const d = new Date(row.work_date);
-        if (!isNaN(d)) {
-          const yyyy = d.getFullYear();
-          const mm = String(d.getMonth() + 1).padStart(2, "0");
-          const dd = String(d.getDate()).padStart(2, "0");
-          dateLabel = `${yyyy}-${mm}-${dd}`;
+        try {
+          const d = new Date(row.work_date);
+          if (!isNaN(d)) {
+            // Format as YYYY-MM-DD
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, "0");
+            const dd = String(d.getDate()).padStart(2, "0");
+            dateLabel = `${yyyy}-${mm}-${dd}`;
+          }
+        } catch {
+          dateLabel = "-";
         }
       }
 
@@ -727,7 +698,7 @@ app.get("/analytics", async (req, res) => {
       checkinsPerDay[index] += 1;
     });
 
-    const labels = Object.keys(labelsMap).filter(l => l !== "-");
+    const labels = Object.keys(labelsMap).filter(l => l !== "-"); // remove invalid ones
 
     res.json({
       totalHours,
@@ -738,12 +709,8 @@ app.get("/analytics", async (req, res) => {
       latePerDay,
       checkinsPerDay
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to load analytics" });
-  }
+  });
 });
-
 
 
 // ---------------- START SERVER ----------------
