@@ -419,6 +419,18 @@ app.post("/users", (req, res) => {
   );
 });
 
+// DEFAULT route for User Management (returns all users)
+app.get("/users", (req, res) => {
+  db.query(
+    "SELECT worker_id, role, job, email FROM users ORDER BY worker_id ASC",
+    (err, results) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(results);
+    }
+  );
+});
+
+
 app.delete("/users/:id", (req, res) => {
   if (req.query.role !== "admin")
     return res.status(403).json({ error: "Only admin can delete users" });
@@ -429,13 +441,24 @@ app.delete("/users/:id", (req, res) => {
   });
 });
 
-// Fetch all workers (for payroll dropdown)
-app.get("/users", (req, res) => {
-  const sql = "SELECT worker_id, job FROM users WHERE role='worker'";
-  db.query(sql, (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(results); // returns an array of workers
-  });
+app.get("/users/all", (req, res) => {
+  db.query(
+    "SELECT worker_id, role, job, email FROM users ORDER BY worker_id ASC",
+    (err, results) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(results);
+    }
+  );
+});
+
+app.get("/users/workers", (req, res) => {
+  db.query(
+    "SELECT worker_id, job FROM users WHERE role='worker'",
+    (err, results) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(results);
+    }
+  );
 });
 
 
