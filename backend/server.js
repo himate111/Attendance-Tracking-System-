@@ -125,6 +125,7 @@ app.post("/login", async (req, res) => {
 
 
 // --------------- CHECK-IN (IMPROVED FOR NIGHT SHIFTS) ------------------
+// ---------------- CHECK-IN (FIXED FOR NIGHT SHIFTS) ------------------
 app.post("/checkin", async (req, res) => {
   const { worker_id, role } = req.body;
 
@@ -133,112 +134,117 @@ app.post("/checkin", async (req, res) => {
   }
 
   try {
-    const nowIST = getNowIST();
+    const now = getNowIST();
 
-    // A. FIRST: if worker already has an ACTIVE check-in (no checkout_time), block duplicate.
-    const [activeRows] = await db.query(
-      `SELECT * FROM attendance WHERE worker_id = ? AND checkout_time IS NULL ORDER BY id DESC LIMIT 1`,
+    // 1. Prevent double check-in
+    const [active] = await db.query(
+      `SELECT * FROM attendance WHERE worker_id=? AND checkout_time IS NULL LIMIT 1`,
       [worker_id]
     );
-    if (activeRows && activeRows.length > 0) {
+    if (active.length > 0) {
       return res.status(400).json({ error: "Already checked in (active session)", success: false });
     }
 
-    // B. Fetch user's shift
-    const [shiftResults] = await db.query(
-      `SELECT s.id AS shift_id, s.shift_name, s.start_time, s.end_time
-       FROM users u
-       JOIN shifts s ON u.shift_id = s.id
-       WHERE u.worker_id = ?`,
+    // 2. Get shift info
+    const [shiftRows] = await db.query(`
+      SELECT s.id AS shift_id, s.shift_name, s.start_time, s.end_time
+      FROM users u
+      JOIN shifts s ON u.shift_id = s.id
+      WHERE u.worker_id = ?`,
       [worker_id]
     );
 
-    if (!shiftResults || shiftResults.length === 0) {
-      const [userRows] = await db.query("SELECT shift_id FROM users WHERE worker_id = ?", [worker_id]);
-      const userShift = userRows.length > 0 ? userRows[0].shift_id : "none";
-      return res.status(404).json({
-        error: `Shift not found for worker ${worker_id}. Expected shift_id=${userShift}`,
-        success: false,
-      });
+    if (!shiftRows.length) {
+      return res.status(404).json({ error: "Shift not assigned", success: false });
     }
 
-    const shift = shiftResults[0];
+    const shift = shiftRows[0];
     const [shStartH, shStartM, shStartS] = shift.start_time.split(":").map(Number);
     const [shEndH, shEndM, shEndS] = shift.end_time.split(":").map(Number);
 
-    // C. Build shiftStart relative to nowIST (important for night/overnight shifts)
-    let shiftStart = new Date(nowIST);
-    shiftStart.setHours(shStartH, shStartM || 0, shStartS || 0, 0);
+    // 3. Build shiftStart
+    let shiftStart = new Date(now);
+    shiftStart.setHours(shStartH, shStartM, shStartS || 0, 0);
 
-    // Build shiftEnd from shiftStart
-    let shiftEnd = new Date(shiftStart);
-    shiftEnd.setHours(shEndH, shEndM || 0, shEndS || 0, 0);
+    // 4. Build shiftEnd
+    let shiftEnd = new Date(now);
+    shiftEnd.setHours(shEndH, shEndM, shEndS || 0, 0);
 
-    // Handle overnight shift (end time is next day)
-    if (shEndH < shStartH || (shEndH === shStartH && shEndM <= shStartM)) {
-      shiftEnd.setDate(shiftEnd.getDate() + 1);
+    // 5. Detect night shift (end < start → overnight)
+    const isNightShift =
+      shEndH < shStartH || (shEndH === shStartH && shEndM <= shStartM);
+
+    if (isNightShift) {
+      // Case 1: Past midnight but before shift start → shift belongs to previous day
+      if (now.getHours() < shStartH) {
+        shiftStart.setDate(shiftStart.getDate() - 1);
+      }
+
+      // Shift ends next day
+      shiftEnd = new Date(shiftStart);
+      shiftEnd.setDate(shiftStart.getDate() + 1);
+      shiftEnd.setHours(shEndH, shEndM, shEndS || 0, 0);
     }
 
-    // Additional adjustment:
-    // Example: shift 22:00 -> 06:00, now is 01:00. shiftStart must be yesterday 22:00.
-    if (shEndH < shStartH && nowIST < shiftStart) {
-      shiftStart.setDate(shiftStart.getDate() - 1);
-      shiftEnd.setDate(shiftEnd.getDate() - 1);
-      shiftEnd.setDate(shiftEnd.getDate() + 1);
-    }
-
-    // Now compute workDate from shiftStart (correct for overnight shifts)
+    // 6. Compute work_date (based on shiftStart)
     const workDate = getISTDateString(shiftStart);
 
-    // D. Secondary duplicate prevention (by work_date)
+    // 7. Second duplicate protection
     const [existing] = await db.query(
       "SELECT * FROM attendance WHERE worker_id=? AND work_date=?",
       [worker_id, workDate]
     );
     if (existing.length > 0) {
-      return res.status(400).json({ error: "Already checked in today (by work_date)", success: false });
+      return res.status(400).json({ error: "Already checked in today", success: false });
     }
 
-    // E. Time window checks relative to shiftStart
-    const diffMin = (nowIST - shiftStart) / 60000;
+    // 8. Timing rules
+    const diffMin = Math.round((now - shiftStart) / 60000); // in minutes
+
     if (diffMin < -60) {
       return res.status(400).json({
         error: `Too early — ${shift.shift_name} starts at ${shift.start_time}`,
-        success: false,
+        success: false
       });
     }
+
     if (diffMin > 300) {
       return res.status(400).json({
-        error: `Too late — more than SIVA come shift start.`,
-        success: false,
+        error: `Too late — more than 5 hours after shift start.`,
+        success: false
       });
     }
 
-    let status = diffMin > 15 ? "Late" : "On time";
-    const checkinTime = formatDateTimeForMySQL(nowIST);
+    const status = diffMin > 15 ? "Late" : "On time";
 
-    // F. Insert check-in record
+    // 9. Insert check-in
     await db.query(
-      `INSERT INTO attendance (worker_id, checkin_time, work_date, shift_id, status)
+      `INSERT INTO attendance(worker_id, checkin_time, work_date, shift_id, status)
        VALUES (?, ?, ?, ?, ?)`,
-      [worker_id, checkinTime, workDate, shift.shift_id, status]
+      [
+        worker_id,
+        formatDateTimeForMySQL(now),
+        workDate,
+        shift.shift_id,
+        status
+      ]
     );
 
     return res.json({
-      message: `Check-in successful (${shift.shift_name})`,
       success: true,
+      message: `Check-in successful (${shift.shift_name})`,
       status,
       work_date: workDate,
-      checkin_time: nowIST.toLocaleTimeString("en-IN", {
+      checkin_time: now.toLocaleTimeString("en-IN", {
         hour: "2-digit",
         minute: "2-digit",
-        hour12: true,
-      }),
+        hour12: true
+      })
     });
 
   } catch (err) {
     console.error("❌ Check-in error:", err);
-    res.status(500).json({ error: err.message, success: false });
+    return res.status(500).json({ error: err.message, success: false });
   }
 });
 
