@@ -26,7 +26,7 @@ app.use(cors({
 }));
 
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, "../frontendd")));
+
 
 // ---------------- HELPERS ----------------
 
@@ -741,6 +741,8 @@ app.get("/analytics", (req, res) => {
   });
 });
 
+
+app.use(express.static(path.join(__dirname, "../frontendd")));
 
 // ---------------- START SERVER ----------------
 app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
