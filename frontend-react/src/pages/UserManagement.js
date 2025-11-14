@@ -18,16 +18,15 @@ const UserManagement = () => {
   }, []);
 
   const loadUsers = async () => {
-  try {
-    const res = await fetch("https://attendance-tracking-system-nu.vercel.app/users/all");
-    const data = await res.json();
-    setUsers(Array.isArray(data) ? data : []);
-  } catch (err) {
-    console.error("Error fetching users:", err);
-    setMessage("❌ Error loading users");
-  }
-};
-
+    try {
+      const res = await fetch("https://attendance-tracking-system-nu.vercel.app/users");
+      const data = await res.json();
+      setUsers(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Error fetching users:", err);
+      setMessage("❌ Error loading users");
+    }
+  };
 
   const addUser = async () => {
     if (!workerId || !password || !role) {
