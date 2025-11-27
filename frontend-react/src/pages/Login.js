@@ -3,6 +3,8 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../style/style.css";
 
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3000";
+
 const Login = () => {
   const [workerId, setWorkerId] = useState("");
   const [password, setPassword] = useState("");
@@ -14,7 +16,7 @@ const Login = () => {
     setMessage("");
 
     try {
-      const res = await fetch("https://attendance-tracking-system-nu.vercel.app/login", {
+      const res = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ worker_id: workerId, password }),
@@ -32,7 +34,7 @@ const Login = () => {
         if (data.role === "admin") {
           navigate("/admin");
         } else {
-          navigate("/checkin"); // you'll create WorkerDashboard later
+          navigate("/checkin");
         }
       } else {
         setMessage(data.error || "Login failed");
